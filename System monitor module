@@ -1,0 +1,90 @@
+`timescale 1ns / 1ps
+
+module sys_mon(
+input wire clk, rstn,start,
+//output reg [11:0] fpga_temp, vcc_int,
+output reg data_ready,
+output  hash_ready
+//output [255:0] hash
+);
+ wire  [255:0] hash;
+ reg [11:0] fpga_temp, vcc_int;
+
+//DRP Signals  
+wire [15:0] drp_do;
+wire drp_drdy;
+reg [6:0] drp_addr;
+reg drp_den;
+
+reg state;
+parameter S_IDLE = 1'b0;
+parameter S_WAIT = 1'b1;
+
+always@(posedge clk ) begin
+if (rstn) 
+  begin
+    state <= S_IDLE;
+    drp_den <= 1'b0;
+    drp_addr <= 7'h00;
+    fpga_temp <= 12'h00;
+    vcc_int <= 12'h00;
+    data_ready <= 1'b0;
+  end
+else begin
+    case(state)
+     S_IDLE: begin
+              drp_den <= 1'b1;
+              state <= S_WAIT;
+              data_ready <= 1'b0;
+             end
+     
+     S_WAIT: begin
+              drp_den <= 1'b0;
+              if(drp_drdy)
+                begin
+                  if(drp_addr == 7'h00)
+                    begin
+                      fpga_temp <= drp_do[15:4];       
+                      drp_addr <= 7'h01;
+                    end
+              
+              else begin
+                     vcc_int <= drp_do[15:4];
+                     drp_addr <= 7'h00;
+                   end
+              data_ready <= 1'b1;
+              state <= S_IDLE;
+          end
+        end
+      endcase             
+    end
+  end
+
+xadc_wiz_0 your_xadc_inst(
+       .daddr_in(drp_addr),
+       .dclk_in(clk),
+       .den_in(drp_den),
+       .di_in(16'h0),
+       .dwe_in(1'b0),   
+       .do_out(drp_do),
+       .drdy_out(drp_drdy),
+       .reset_in(rstn),
+       .vp_in(1'b0),// dedicated analog pin(unused here)
+       .vn_in(1'b0)// dedicated analog pin(unused here)
+);    
+
+wire[23:0] message={fpga_temp, vcc_int};
+//wire    start;
+
+ila_0  your_instance_name (
+	.clk(clk), // input wire clk
+    
+
+	.probe0(message), // input wire [23:0]  probe0  
+	.probe1(hash), // input wire [255:0]  probe1
+	.probe2(rstn)   // input wire 1  probe2
+);
+
+
+Hash h0 (.clk(clk), .rst(rstn),.message(message), .start(start) , .ready(hash_ready), .hash(hash) ) ;
+endmodule
